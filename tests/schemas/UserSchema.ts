@@ -1,5 +1,7 @@
 import { Schema } from 'mongoose'
 
+import AddressSchema from './AddressSchema'
+
 import type IUser from '../interfaces/IUser'
 
 const UserSchema = new Schema<IUser>({
@@ -11,10 +13,15 @@ const UserSchema = new Schema<IUser>({
     type: String,
     required: true
   },
-  sessions: [{
-    type: String,
+  sessions: {
+    type: [String],
+    required: false,
+    default: undefined
+  },
+  address: {
+    type: AddressSchema,
     required: false
-  }],
+  },
   company: {
     type: Schema.Types.ObjectId,
     required: false,
