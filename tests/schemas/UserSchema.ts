@@ -10,6 +10,15 @@ const UserSchema = new Schema<IUser>({
   role: {
     type: String,
     required: true
+  },
+  sessions: [{
+    type: String,
+    required: false
+  }],
+  company: {
+    type: Schema.Types.ObjectId,
+    required: false,
+    ref: 'Company'
   }
 }, { timestamps: true })
 
