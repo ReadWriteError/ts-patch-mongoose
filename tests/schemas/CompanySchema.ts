@@ -9,7 +9,10 @@ const CompanySchema = new Schema<ICompany>({
     type: String,
     required: true
   },
-  address: AddressSchema
+  address: {
+    type: AddressSchema,
+    required: true
+  }
 }, { timestamps: true })
 
 export default CompanySchema
