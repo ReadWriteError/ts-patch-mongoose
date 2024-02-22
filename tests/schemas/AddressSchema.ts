@@ -11,6 +11,6 @@ const AddressSchema = new Schema<IAddress>({
     type: String,
     required: true
   }
-}, { timestamps: false })
+}, { _id: false, timestamps: false })
 
 export default AddressSchema
