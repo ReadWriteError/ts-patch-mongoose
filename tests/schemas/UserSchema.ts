@@ -15,16 +15,16 @@ const UserSchema = new Schema<IUser>({
   },
   sessions: {
     type: [String],
-    required: false,
+    required: true,
     default: undefined
   },
   address: {
     type: AddressSchema,
-    required: false
+    required: true
   },
   company: {
     type: Schema.Types.ObjectId,
-    required: false,
+    required: true,
     ref: 'Company'
   }
 }, { timestamps: true })
