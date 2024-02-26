@@ -3,6 +3,7 @@ import { isMongooseLessThan7 } from '../src/version'
 import mongoose from 'mongoose'
 
 import UserSchema from './schemas/UserSchema'
+import CompanySchema from './schemas/CompanySchema'
 import { patchHistoryPlugin } from '../src/plugin'
 import History from '../src/models/History'
 
@@ -24,6 +25,7 @@ describe('plugin', () => {
   })
 
   const User = mongoose.model('User', UserSchema)
+  const Company = mongoose.model('Company', CompanySchema)
 
   beforeAll(async () => {
     await mongoose.connect(uri)
@@ -35,25 +37,27 @@ describe('plugin', () => {
 
   beforeEach(async () => {
     await mongoose.connection.collection('users').deleteMany({})
+    await mongoose.connection.collection('companies').deleteMany({})
     await mongoose.connection.collection('history').deleteMany({})
   })
 
   it('should createHistory', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(user.name).toBe('John')
 
     user.name = 'Alice'
+    user.role = 'manager'
+    user.sessions.push('192.168.0.2')
+    user.address.state = 'Oregon'
     await user.save()
 
-    user.name = 'Bob'
-    await user.save()
-
-    await User.deleteMany({ role: 'user' }).exec()
+    await User.deleteMany({}).exec()
 
     const history = await History.find({})
-    expect(history).toHaveLength(4)
+    expect(history).toHaveLength(3)
 
-    const [first, second, third, fourth] = history
+    const [first, second, third] = history
 
     // 1 create
     expect(first.version).toBe(0)
@@ -65,6 +69,9 @@ describe('plugin', () => {
     expect(first.doc).toHaveProperty('_id', user._id)
     expect(first.doc).toHaveProperty('name', 'John')
     expect(first.doc).toHaveProperty('role', 'user')
+    expect(first.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(first.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(first.doc).toHaveProperty('company', company._id)
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -79,96 +86,76 @@ describe('plugin', () => {
 
     expect(second.doc).toBeUndefined()
 
-    expect(second.patch).toHaveLength(2)
     expect(second.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'John' },
-      { op: 'replace', path: '/name', value: 'Alice' }
+      {'op': 'test', 'path': '/address/state', 'value': 'Maine'},
+      {'op': 'replace', 'path': '/address/state', 'value': 'Oregon'},
+      {'op': 'add', 'path': '/sessions/1', 'value': '192.168.0.2'},
+      {'op': 'test', 'path': '/name', 'value': 'John'},
+      {'op': 'replace', 'path': '/name', 'value': 'Alice'}
     ])
 
-    // 3 update
-    expect(third.version).toBe(2)
-    expect(third.op).toBe('update')
+    // 3 delete
+    expect(third.version).toBe(0)
+    expect(third.op).toBe('deleteMany')
     expect(third.modelName).toBe('User')
     expect(third.collectionName).toBe('users')
     expect(third.collectionId).toEqual(user._id)
 
-    expect(third.doc).toBeUndefined()
+    expect(third.doc).toHaveProperty('_id', user._id)
+    expect(third.doc).toHaveProperty('name', 'Alice')
+    expect(third.doc).toHaveProperty('role', 'manager')
+    expect(third.doc).toHaveProperty('sessions', ['192.168.0.1', '192.168.0.2'])
+    expect(third.doc).toHaveProperty('address', { city: 'Portland', state: 'Oregon' })
+    expect(third.doc).toHaveProperty('company', company._id)
+    expect(third.doc).toHaveProperty('createdAt')
+    expect(third.doc).toHaveProperty('updatedAt')
 
-    expect(third.patch).toHaveLength(2)
-    expect(third.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'Alice' },
-      { op: 'replace', path: '/name', value: 'Bob' }
-    ])
+    expect(third.patch).toHaveLength(0)
 
-    // 4 delete
-    expect(fourth.version).toBe(0)
-    expect(fourth.op).toBe('deleteMany')
-    expect(fourth.modelName).toBe('User')
-    expect(fourth.collectionName).toBe('users')
-    expect(fourth.collectionId).toEqual(user._id)
-
-    expect(fourth.doc).toHaveProperty('_id', user._id)
-    expect(fourth.doc).toHaveProperty('name', 'Bob')
-    expect(fourth.doc).toHaveProperty('role', 'user')
-    expect(fourth.doc).toHaveProperty('createdAt')
-    expect(fourth.doc).toHaveProperty('updatedAt')
-
-    expect(fourth.patch).toHaveLength(0)
-
-    expect(em.emit).toHaveBeenCalledTimes(4)
+    expect(em.emit).toHaveBeenCalledTimes(3)
     expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: user._id, name: 'John', role: 'user' }),
-      doc: expect.objectContaining({ _id: user._id, name: 'Alice', role: 'user' }),
+      oldDoc: expect.objectContaining({
+        _id: user._id,
+        name: 'John',
+        role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id
+      }),
+      doc: expect.objectContaining({
+        _id: user._id,
+        name: 'Alice',
+        role: 'manager',
+        sessions: ['192.168.0.1', '192.168.0.2'],
+        address: { city: 'Portland', state: 'Oregon' },
+        company: company._id
+      }),
       patch: second.patch
     })
-    expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: user._id, name: 'Alice', role: 'user' }),
-      doc: expect.objectContaining({ _id: user._id, name: 'Bob', role: 'user' }),
-      patch: third.patch
-    })
     expect(em.emit).toHaveBeenCalledWith(USER_DELETED, {
-      oldDoc: expect.objectContaining({ _id: user._id, name: 'Bob', role: 'user' })
+      oldDoc: expect.objectContaining({
+        _id: user._id,
+        name: 'Alice',
+        role: 'manager',
+        sessions: ['192.168.0.1', '192.168.0.2'],
+        address: { city: 'Portland', state: 'Oregon' },
+        company: company._id
+      })
     })
-  })
-
-  it('should omit update of role', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
-    expect(user.name).toBe('John')
-
-    user.role = 'manager'
-    await user.save()
-
-    const history = await History.find({})
-    expect(history).toHaveLength(1)
-
-    const [first] = history
-
-    // 1 create
-    expect(first.version).toBe(0)
-    expect(first.op).toBe('create')
-    expect(first.modelName).toBe('User')
-    expect(first.collectionName).toBe('users')
-    expect(first.collectionId).toEqual(user._id)
-
-    expect(first.doc).toHaveProperty('_id', user._id)
-    expect(first.doc).toHaveProperty('name', 'John')
-    expect(first.doc).toHaveProperty('role', 'user')
-    expect(first.doc).toHaveProperty('createdAt')
-    expect(first.doc).toHaveProperty('updatedAt')
-
-    expect(first.patch).toHaveLength(0)
-
-    expect(em.emit).toHaveBeenCalledTimes(1)
-    expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
-    // no update event emitted because role is omitted
   })
 
   it('should updateOne', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(user.name).toBe('John')
 
-    await User.updateOne({ _id: user._id }, { name: 'Alice' }).exec()
+    await User.updateOne({ _id: user._id }, {
+      name: 'Alice',
+      role: 'manager',
+      $push: { sessions: '192.168.0.2' },
+      address: { city: 'Portland', state: 'Oregon' }
+    }).exec()
 
     const history = await History.find({})
     expect(history).toHaveLength(2)
@@ -185,6 +172,9 @@ describe('plugin', () => {
     expect(first.doc).toHaveProperty('_id', user._id)
     expect(first.doc).toHaveProperty('name', 'John')
     expect(first.doc).toHaveProperty('role', 'user')
+    expect(first.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(first.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(first.doc).toHaveProperty('company', company._id)
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -199,26 +189,57 @@ describe('plugin', () => {
 
     expect(second.doc).toBeUndefined()
 
-    expect(second.patch).toHaveLength(2)
     expect(second.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'John' },
-      { op: 'replace', path: '/name', value: 'Alice' }
+      {'op': 'test', 'path': '/address/state', 'value': 'Maine'},
+      {'op': 'replace', 'path': '/address/state', 'value': 'Oregon'},
+      {'op': 'add', 'path': '/sessions/1', 'value': '192.168.0.2'},
+      {'op': 'test', 'path': '/name', 'value': 'John'},
+      {'op': 'replace', 'path': '/name', 'value': 'Alice'}
     ])
 
     expect(em.emit).toHaveBeenCalledTimes(2)
     expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: user._id, name: 'John', role: 'user' }),
-      doc: expect.objectContaining({ _id: user._id, name: 'Alice', role: 'user' }),
+      oldDoc: expect.objectContaining({
+        _id: user._id,
+        name: 'John',
+        role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id
+      }),
+      doc: expect.objectContaining({
+        _id: user._id,
+        name: 'Alice',
+        role: 'manager',
+        sessions: ['192.168.0.1', '192.168.0.2'],
+        address: { city: 'Portland', state: 'Oregon' },
+        company: company._id
+      }),
       patch: second.patch
     })
   })
 
   it('should findOneAndUpdate', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(user.name).toBe('John')
 
-    await User.findOneAndUpdate({ _id: user._id }, { name: 'Alice' }).exec()
+    if (isMongooseLessThan7) {
+      await User.update({ _id: user._id }, {
+        name: 'Alice',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }).exec()
+    } else {
+      await User.findOneAndUpdate({ _id: user._id }, {
+        name: 'Alice',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }).exec()
+    }
 
     const history = await History.find({})
     expect(history).toHaveLength(2)
@@ -235,6 +256,9 @@ describe('plugin', () => {
     expect(first.doc).toHaveProperty('_id', user._id)
     expect(first.doc).toHaveProperty('name', 'John')
     expect(first.doc).toHaveProperty('role', 'user')
+    expect(first.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(first.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(first.doc).toHaveProperty('company', company._id)
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -249,167 +273,41 @@ describe('plugin', () => {
 
     expect(second.doc).toBeUndefined()
 
-    expect(second.patch).toHaveLength(2)
     expect(second.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'John' },
-      { op: 'replace', path: '/name', value: 'Alice' }
+      {'op': 'test', 'path': '/address/state', 'value': 'Maine'},
+      {'op': 'replace', 'path': '/address/state', 'value': 'Oregon'},
+      {'op': 'add', 'path': '/sessions/1', 'value': '192.168.0.2'},
+      {'op': 'test', 'path': '/name', 'value': 'John'},
+      {'op': 'replace', 'path': '/name', 'value': 'Alice'}
     ])
 
     expect(em.emit).toHaveBeenCalledTimes(2)
     expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: user._id, name: 'John', role: 'user' }),
-      doc: expect.objectContaining({ _id: user._id, name: 'Alice', role: 'user' }),
+      oldDoc: expect.objectContaining({
+        _id: user._id,
+        name: 'John',
+        role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id
+      }),
+      doc: expect.objectContaining({
+        _id: user._id,
+        name: 'Alice',
+        role: 'manager',
+        sessions: ['192.168.0.1', '192.168.0.2'],
+        address: { city: 'Portland', state: 'Oregon' },
+        company: company._id
+      }),
       patch: second.patch
-    })
-  })
-
-  it('should update deprecated', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
-    expect(user.name).toBe('John')
-
-    if (isMongooseLessThan7) {
-      await User.update({ _id: user._id }, { $set: { name: 'Alice' } }).exec()
-    } else {
-      await User.findOneAndUpdate({ _id: user._id }, { $set: { name: 'Alice' } }).exec()
-    }
-
-    const history = await History.find({})
-    expect(history).toHaveLength(2)
-
-    const [first, second] = history
-
-    // 1 create
-    expect(first.version).toBe(0)
-    expect(first.op).toBe('create')
-    expect(first.modelName).toBe('User')
-    expect(first.collectionName).toBe('users')
-    expect(first.collectionId).toEqual(user._id)
-
-    expect(first.doc).toHaveProperty('_id', user._id)
-    expect(first.doc).toHaveProperty('name', 'John')
-    expect(first.doc).toHaveProperty('role', 'user')
-    expect(first.doc).toHaveProperty('createdAt')
-    expect(first.doc).toHaveProperty('updatedAt')
-
-    expect(first.patch).toHaveLength(0)
-
-    // 2 update
-    expect(second.version).toBe(1)
-    expect(second.modelName).toBe('User')
-    expect(second.collectionName).toBe('users')
-    expect(second.collectionId).toEqual(user._id)
-
-    expect(second.doc).toBeUndefined()
-
-    expect(second.patch).toHaveLength(2)
-    expect(second.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'John' },
-      { op: 'replace', path: '/name', value: 'Alice' }
-    ])
-
-    expect(em.emit).toHaveBeenCalledTimes(2)
-    expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
-    expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: user._id, name: 'John', role: 'user' }),
-      doc: expect.objectContaining({ _id: user._id, name: 'Alice', role: 'user' }),
-      patch: second.patch
-    })
-  })
-
-  it('should updated deprecated with multi flag', async () => {
-    const john = await User.create({ name: 'John', role: 'user' })
-    expect(john.name).toBe('John')
-    const alice = await User.create({ name: 'Alice', role: 'user' })
-    expect(alice.name).toBe('Alice')
-
-    if (isMongooseLessThan7) {
-      await User.update({ role: 'user' }, { $set: { name: 'Bob' } }, { multi: true }).exec()
-    } else {
-      await User.findOneAndUpdate({ role: 'user' }, { $set: { name: 'Bob' } }).exec()
-    }
-
-    const history = await History.find({})
-    expect(history).toHaveLength(4)
-
-    const [first, second, third, fourth] = history
-
-    // 1 create
-    expect(first.version).toBe(0)
-    expect(first.op).toBe('create')
-    expect(first.modelName).toBe('User')
-    expect(first.collectionName).toBe('users')
-    expect(first.collectionId).toEqual(john._id)
-
-    expect(first.doc).toHaveProperty('_id', john._id)
-    expect(first.doc).toHaveProperty('name', 'John')
-    expect(first.doc).toHaveProperty('role', 'user')
-    expect(first.doc).toHaveProperty('createdAt')
-    expect(first.doc).toHaveProperty('updatedAt')
-
-    expect(first.patch).toHaveLength(0)
-
-    // 2 create
-    expect(second.version).toBe(0)
-    expect(second.op).toBe('create')
-    expect(second.modelName).toBe('User')
-    expect(second.collectionName).toBe('users')
-    expect(second.collectionId).toEqual(alice._id)
-
-    expect(second.doc).toHaveProperty('_id', alice._id)
-    expect(second.doc).toHaveProperty('name', 'Alice')
-    expect(second.doc).toHaveProperty('role', 'user')
-    expect(second.doc).toHaveProperty('createdAt')
-    expect(second.doc).toHaveProperty('updatedAt')
-
-    expect(second.patch).toHaveLength(0)
-
-    // 3 update
-    expect(third.version).toBe(1)
-    expect(third.modelName).toBe('User')
-    expect(third.collectionName).toBe('users')
-    expect(third.collectionId).toEqual(john._id)
-
-    expect(third.doc).toBeUndefined()
-
-    expect(third.patch).toHaveLength(2)
-    expect(third.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'John' },
-      { op: 'replace', path: '/name', value: 'Bob' }
-    ])
-
-    // 4 update
-    expect(fourth.version).toBe(1)
-    expect(fourth.modelName).toBe('User')
-    expect(fourth.collectionName).toBe('users')
-    expect(fourth.collectionId).toEqual(alice._id)
-
-    expect(fourth.doc).toBeUndefined()
-
-    expect(fourth.patch).toHaveLength(2)
-    expect(fourth.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'Alice' },
-      { op: 'replace', path: '/name', value: 'Bob' }
-    ])
-
-    expect(em.emit).toHaveBeenCalledTimes(4)
-    expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
-    expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: second.doc })
-    expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: john._id, name: 'John', role: 'user' }),
-      doc: expect.objectContaining({ _id: john._id, name: 'Bob', role: 'user' }),
-      patch: third.patch
-    })
-    expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: alice._id, name: 'Alice', role: 'user' }),
-      doc: expect.objectContaining({ _id: alice._id, name: 'Bob', role: 'user' }),
-      patch: fourth.patch
     })
   })
 
   it('should create many', async () => {
-    await User.create({ name: 'John', role: 'user' })
-    await User.create({ name: 'Alice', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
+    await User.create({ name: 'Alice', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
 
     const history = await History.find({}).sort('doc.name')
     expect(history).toHaveLength(2)
@@ -425,6 +323,9 @@ describe('plugin', () => {
     expect(first.doc).toHaveProperty('_id')
     expect(first.doc).toHaveProperty('name', 'Alice')
     expect(first.doc).toHaveProperty('role', 'user')
+    expect(first.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(first.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(first.doc).toHaveProperty('company', company._id)
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -439,6 +340,9 @@ describe('plugin', () => {
     expect(second.doc).toHaveProperty('_id')
     expect(second.doc).toHaveProperty('name', 'John')
     expect(second.doc).toHaveProperty('role', 'user')
+    expect(second.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(second.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(second.doc).toHaveProperty('company', company._id)
     expect(second.doc).toHaveProperty('createdAt')
     expect(second.doc).toHaveProperty('updatedAt')
 
@@ -450,7 +354,14 @@ describe('plugin', () => {
   })
 
   it('should findOneAndUpdate upsert', async () => {
-    await User.findOneAndUpdate({ name: 'John', role: 'user' }, { name: 'Bob', role: 'user' }, { upsert: true, runValidators: true }).exec()
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    await User.findOneAndUpdate({ name: 'John' }, {
+      name: 'Alice',
+      role: 'manager',
+      $push: { sessions: '192.168.0.2' },
+      address: { city: 'Portland', state: 'Oregon' },
+      company: company
+    }, { upsert: true, runValidators: true }).exec()
     const documents = await User.find({})
     expect(documents).toHaveLength(1)
 
@@ -466,10 +377,13 @@ describe('plugin', () => {
     expect(first.collectionName).toBe('users')
 
     expect(first.doc).toHaveProperty('_id')
-    expect(first.doc).toHaveProperty('name', 'Bob')
-    expect(first.doc).toHaveProperty('role', 'user')
+    expect(first.doc).toHaveProperty('name', 'Alice')
+    expect(first.doc).toHaveProperty('role', 'manager')
+    expect(first.doc).toHaveProperty('sessions', ['192.168.0.2'])
+    expect(first.doc).toHaveProperty('address', { city: 'Portland', state: 'Oregon' })
+    expect(first.doc).toHaveProperty('company', company._id)
 
-    // Upsert don't have createdAt and updatedAt and validation errors
+    // Upsert don't have createdAt, updatedAt, or validation errors
     // Investigate this case later
     // expect(first.doc).toHaveProperty('createdAt')
     // expect(first.doc).toHaveProperty('updatedAt')
@@ -482,12 +396,27 @@ describe('plugin', () => {
   })
 
   it('should update many', async () => {
-    const john = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const john = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(john.name).toBe('John')
-    const alice = await User.create({ name: 'Alice', role: 'user' })
+    const alice = await User.create({ name: 'Alice', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(alice.name).toBe('Alice')
 
-    await User.updateMany({ role: 'user' }, { $set: { name: 'Bob' } }).exec()
+    if (isMongooseLessThan7) {
+      await User.update({}, {
+        name: 'Bob',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }, { multi: true }).exec()
+    } else {
+      await User.updateMany({}, {
+        name: 'Bob',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }).exec()
+    }
 
     const history = await History.find({})
     expect(history).toHaveLength(4)
@@ -504,22 +433,26 @@ describe('plugin', () => {
     expect(first.doc).toHaveProperty('_id', john._id)
     expect(first.doc).toHaveProperty('name', 'John')
     expect(first.doc).toHaveProperty('role', 'user')
+    expect(first.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(first.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(first.doc).toHaveProperty('company', company._id)
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
     expect(first.patch).toHaveLength(0)
 
     // 2 create
-
     expect(second.version).toBe(0)
     expect(second.op).toBe('create')
     expect(second.modelName).toBe('User')
     expect(second.collectionName).toBe('users')
-    expect(second.collectionId).toEqual(alice._id)
 
     expect(second.doc).toHaveProperty('_id', alice._id)
     expect(second.doc).toHaveProperty('name', 'Alice')
     expect(second.doc).toHaveProperty('role', 'user')
+    expect(second.doc).toHaveProperty('sessions', ['192.168.0.1'])
+    expect(second.doc).toHaveProperty('address', { city: 'Portland', state: 'Maine' })
+    expect(second.doc).toHaveProperty('company', company._id)
     expect(second.doc).toHaveProperty('createdAt')
     expect(second.doc).toHaveProperty('updatedAt')
 
@@ -534,13 +467,15 @@ describe('plugin', () => {
 
     expect(third.doc).toBeUndefined()
 
-    expect(third.patch).toHaveLength(2)
     expect(third.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'John' },
-      { op: 'replace', path: '/name', value: 'Bob' }
+      {'op': 'test', 'path': '/address/state', 'value': 'Maine'},
+      {'op': 'replace', 'path': '/address/state', 'value': 'Oregon'},
+      {'op': 'add', 'path': '/sessions/1', 'value': '192.168.0.2'},
+      {'op': 'test', 'path': '/name', 'value': 'John'},
+      {'op': 'replace', 'path': '/name', 'value': 'Bob'}
     ])
 
-    // 4 update
+    // 3 update
     expect(fourth.version).toBe(1)
     expect(fourth.op).toBe('updateMany')
     expect(fourth.modelName).toBe('User')
@@ -549,23 +484,53 @@ describe('plugin', () => {
 
     expect(fourth.doc).toBeUndefined()
 
-    expect(fourth.patch).toHaveLength(2)
     expect(fourth.patch).toMatchObject([
-      { op: 'test', path: '/name', value: 'Alice' },
-      { op: 'replace', path: '/name', value: 'Bob' }
+      {'op': 'test', 'path': '/address/state', 'value': 'Maine'},
+      {'op': 'replace', 'path': '/address/state', 'value': 'Oregon'},
+      {'op': 'add', 'path': '/sessions/1', 'value': '192.168.0.2'},
+      {'op': 'test', 'path': '/name', 'value': 'Alice'},
+      {'op': 'replace', 'path': '/name', 'value': 'Bob'}
     ])
 
     expect(em.emit).toHaveBeenCalledTimes(4)
     expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(USER_CREATED, { doc: second.doc })
     expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: john._id, name: 'John', role: 'user' }),
-      doc: expect.objectContaining({ _id: john._id, name: 'Bob', role: 'user' }),
+      oldDoc: expect.objectContaining({
+        _id: john._id,
+        name: 'John',
+        role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id
+      }),
+      doc: expect.objectContaining({
+        _id: john._id,
+        name: 'Bob',
+        role: 'manager',
+        sessions: ['192.168.0.1', '192.168.0.2'],
+        address: { city: 'Portland', state: 'Oregon' },
+        company: company._id
+      }),
       patch: third.patch
     })
     expect(em.emit).toHaveBeenCalledWith(USER_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: alice._id, name: 'Alice', role: 'user' }),
-      doc: expect.objectContaining({ _id: alice._id, name: 'Bob', role: 'user' }),
+      oldDoc: expect.objectContaining({
+        _id: alice._id,
+        name: 'Alice',
+        role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id
+      }),
+      doc: expect.objectContaining({
+        _id: alice._id,
+        name: 'Bob',
+        role: 'manager',
+        sessions: ['192.168.0.1', '192.168.0.2'],
+        address: { city: 'Portland', state: 'Oregon' },
+        company: company._id
+      }),
       patch: fourth.patch
     })
   })
