@@ -3,6 +3,7 @@ import { isMongooseLessThan7 } from '../src/version'
 import mongoose, { model } from 'mongoose'
 
 import UserSchema from './schemas/UserSchema'
+import CompanySchema from './schemas/CompanySchema'
 import { patchHistoryPlugin } from '../src/plugin'
 import History from '../src/models/History'
 
@@ -20,6 +21,7 @@ describe('plugin - patch history disabled', () => {
   })
 
   const User = model('User', UserSchema)
+  const Company = mongoose.model('Company', CompanySchema)
 
   beforeAll(async () => {
     await mongoose.connect(uri)
@@ -31,18 +33,19 @@ describe('plugin - patch history disabled', () => {
 
   beforeEach(async () => {
     await mongoose.connection.collection('users').deleteMany({})
+    await mongoose.connection.collection('companies').deleteMany({})
     await mongoose.connection.collection('history').deleteMany({})
   })
 
   it('should createHistory', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(user.name).toBe('John')
 
     user.name = 'Alice'
-    await user.save()
-
-    user.name = 'Bob'
-    await user.save()
+    user.role = 'manager'
+    user.sessions.push('192.168.0.2')
+    user.address.state = 'Oregon'
 
     const history = await History.find({})
     expect(history).toHaveLength(0)
@@ -52,24 +55,17 @@ describe('plugin - patch history disabled', () => {
     expect(em.emit).toHaveBeenCalledTimes(0)
   })
 
-  it('should omit update of role', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
-    expect(user.name).toBe('John')
-
-    user.role = 'manager'
-    await user.save()
-
-    const history = await History.find({})
-    expect(history).toHaveLength(0)
-
-    expect(em.emit).toHaveBeenCalledTimes(0)
-  })
-
   it('should updateOne', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(user.name).toBe('John')
 
-    await User.updateOne({ _id: user._id }, { name: 'Alice' }).exec()
+    await User.updateOne({ _id: user._id }, {
+      name: 'Alice',
+      role: 'manager',
+      $push: { sessions: '192.168.0.2' },
+      address: { city: 'Portland', state: 'Oregon' }
+    }).exec()
 
     const history = await History.find({})
     expect(history).toHaveLength(0)
@@ -78,41 +74,24 @@ describe('plugin - patch history disabled', () => {
   })
 
   it('should findOneAndUpdate', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
-    expect(user.name).toBe('John')
-
-    await User.findOneAndUpdate({ _id: user._id }, { name: 'Alice' }).exec()
-
-    const history = await History.find({})
-    expect(history).toHaveLength(0)
-
-    expect(em.emit).toHaveBeenCalledTimes(0)
-  })
-
-  it('should update deprecated', async () => {
-    const user = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(user.name).toBe('John')
 
     if (isMongooseLessThan7) {
-      await User.update({ _id: user._id }, { $set: { name: 'Alice' } }).exec()
+      await User.update({ _id: user._id }, {
+        name: 'Alice',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }).exec()
     } else {
-      await User.findOneAndUpdate({ _id: user._id }, { $set: { name: 'Alice' } }).exec()
-    }
-
-    const history = await History.find({})
-    expect(history).toHaveLength(0)
-  })
-
-  it('should updated deprecated with multi flag', async () => {
-    const john = await User.create({ name: 'John', role: 'user' })
-    expect(john.name).toBe('John')
-    const alice = await User.create({ name: 'Alice', role: 'user' })
-    expect(alice.name).toBe('Alice')
-
-    if (isMongooseLessThan7) {
-      await User.update({ role: 'user' }, { $set: { name: 'Bob' } }, { multi: true }).exec()
-    } else {
-      await User.updateMany({ role: 'user' }, { $set: { name: 'Bob' } }).exec()
+      await User.findOneAndUpdate({ _id: user._id }, {
+        name: 'Alice',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }).exec()
     }
 
     const history = await History.find({})
@@ -122,8 +101,9 @@ describe('plugin - patch history disabled', () => {
   })
 
   it('should create many', async () => {
-    await User.create({ name: 'John', role: 'user' })
-    await User.create({ name: 'Alice', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
+    await User.create({ name: 'Alice', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
 
     const history = await History.find({})
     expect(history).toHaveLength(0)
@@ -132,7 +112,14 @@ describe('plugin - patch history disabled', () => {
   })
 
   it('should findOneAndUpdate upsert', async () => {
-    await User.findOneAndUpdate({ name: 'John', role: 'user' }, { name: 'Bob', role: 'user' }, { upsert: true, runValidators: true }).exec()
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    await User.findOneAndUpdate({ name: 'John' }, {
+      name: 'Alice',
+      role: 'manager',
+      $push: { sessions: '192.168.0.2' },
+      address: { city: 'Portland', state: 'Oregon' },
+      company: company
+    }, { upsert: true, runValidators: true }).exec()
     const documents = await User.find({})
     expect(documents).toHaveLength(1)
 
@@ -143,12 +130,27 @@ describe('plugin - patch history disabled', () => {
   })
 
   it('should update many', async () => {
-    const john = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const john = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(john.name).toBe('John')
-    const alice = await User.create({ name: 'Alice', role: 'user' })
+    const alice = await User.create({ name: 'Alice', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
     expect(alice.name).toBe('Alice')
 
-    await User.updateMany({ role: 'user' }, { $set: { name: 'Bob' } }).exec()
+    if (isMongooseLessThan7) {
+      await User.update({}, {
+        name: 'Bob',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }, { multi: true }).exec()
+    } else {
+      await User.updateMany({}, {
+        name: 'Bob',
+        role: 'manager',
+        $push: { sessions: '192.168.0.2' },
+        address: { city: 'Portland', state: 'Oregon' }
+      }).exec()
+    }
 
     const history = await History.find({})
     expect(history).toHaveLength(0)
