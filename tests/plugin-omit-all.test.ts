@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { isMongooseLessThan7 } from '../src/version'
 
 import mongoose, { Types, model } from 'mongoose'
@@ -44,8 +45,8 @@ describe('plugin - omit all', () => {
 
     user.name = 'Alice'
     user.role = 'manager'
-    user.sessions.push('192.168.0.2')
-    user.address.state = 'Oregon'
+    user.sessions!.push('192.168.0.2')
+    user.address!.state = 'Oregon'
     await user.save()
 
     await User.deleteMany({}).exec()

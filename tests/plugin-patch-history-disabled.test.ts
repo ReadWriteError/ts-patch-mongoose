@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { isMongooseLessThan7 } from '../src/version'
 
 import mongoose, { model } from 'mongoose'
@@ -44,8 +45,8 @@ describe('plugin - patch history disabled', () => {
 
     user.name = 'Alice'
     user.role = 'manager'
-    user.sessions.push('192.168.0.2')
-    user.address.state = 'Oregon'
+    user.sessions!.push('192.168.0.2')
+    user.address!.state = 'Oregon'
 
     const history = await History.find({})
     expect(history).toHaveLength(0)
