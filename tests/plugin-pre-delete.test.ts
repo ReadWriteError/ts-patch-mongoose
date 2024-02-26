@@ -2,6 +2,7 @@ import { isMongooseLessThan7 } from '../src/version'
 import mongoose, { model } from 'mongoose'
 
 import UserSchema from './schemas/UserSchema'
+import CompanySchema from './schemas/CompanySchema'
 import { patchHistoryPlugin } from '../src/plugin'
 
 import { USER_DELETED } from './constants/events'
@@ -24,6 +25,7 @@ describe('plugin - preDelete test', () => {
   })
 
   const User = model('User', UserSchema)
+  const Company = mongoose.model('Company', CompanySchema)
 
   beforeAll(async () => {
     await mongoose.connect(uri)
@@ -35,13 +37,15 @@ describe('plugin - preDelete test', () => {
 
   beforeEach(async () => {
     await mongoose.connection.collection('users').deleteMany({})
+    await mongoose.connection.collection('companies').deleteMany({})
     await mongoose.connection.collection('history').deleteMany({})
   })
 
   it('should deleteMany and execute preDelete', async () => {
-    await User.create({ name: 'John', role: 'user' })
-    await User.create({ name: 'Jane', role: 'user' })
-    await User.create({ name: 'Jack', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
+    await User.create({ name: 'Jane', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
+    await User.create({ name: 'Jack', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
 
     const users = await User.find({}).sort().lean().exec()
     expect(users).toHaveLength(3)
@@ -59,6 +63,9 @@ describe('plugin - preDelete test', () => {
         _id: jane?._id,
         name: 'Jane',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: jane?.createdAt,
         updatedAt: jane?.updatedAt
       }
@@ -69,6 +76,9 @@ describe('plugin - preDelete test', () => {
         _id: john?._id,
         name: 'John',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: john?.createdAt,
         updatedAt: john?.updatedAt
       }
@@ -79,6 +89,9 @@ describe('plugin - preDelete test', () => {
         _id: jack?._id,
         name: 'Jack',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: jack?.createdAt,
         updatedAt: jack?.updatedAt
       }
@@ -86,9 +99,10 @@ describe('plugin - preDelete test', () => {
   })
 
   it('should deleteOne and execute preDelete', async () => {
-    await User.create({ name: 'John', role: 'user' })
-    await User.create({ name: 'Jane', role: 'user' })
-    await User.create({ name: 'Jack', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
+    await User.create({ name: 'Jane', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
+    await User.create({ name: 'Jack', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
 
     const users = await User.find({}).sort().lean().exec()
     expect(users).toHaveLength(3)
@@ -103,6 +117,9 @@ describe('plugin - preDelete test', () => {
         _id: john?._id,
         name: 'John',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: john?.createdAt,
         updatedAt: john?.updatedAt
       }
@@ -115,6 +132,9 @@ describe('plugin - preDelete test', () => {
         _id: john?._id,
         name: 'John',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: john?.createdAt,
         updatedAt: john?.updatedAt
       }
@@ -122,7 +142,8 @@ describe('plugin - preDelete test', () => {
   })
 
   it('should remove and execute preDelete', async () => {
-    const john = await User.create({ name: 'John', role: 'user' })
+    const company = await Company.create({name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const john = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: company })
 
     if (isMongooseLessThan7) {
       await john?.remove()
@@ -137,6 +158,9 @@ describe('plugin - preDelete test', () => {
         _id: john?._id,
         name: 'John',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: john?.createdAt,
         updatedAt: john?.updatedAt
       }
@@ -149,6 +173,9 @@ describe('plugin - preDelete test', () => {
         _id: john?._id,
         name: 'John',
         role: 'user',
+        sessions: ['192.168.0.1'],
+        address: { city: 'Portland', state: 'Maine' },
+        company: company._id,
         createdAt: john?.createdAt,
         updatedAt: john?.updatedAt
       }
