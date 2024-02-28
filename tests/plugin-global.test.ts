@@ -866,4 +866,170 @@ describe('plugin - global', () => {
       patch: history[4].patch
     })
   })
+
+  it('should depopulate company', async () => {
+    const google = await Company.create({_id: '65de5dc7da936e48265b0d09', name: 'Google', address: {city: 'Mountain View', state: 'California'}})
+    const apple = await Company.create({_id: '65de5dc7da936e48265b0d0d', name: 'Apple', address: {city: 'Cupertino', state: 'California'}})
+    const user = await User.create({ name: 'John', role: 'user', sessions: ['192.168.0.1'], address: {city: 'Portland', state: 'Maine'}, company: google })
+    expect(user.name).toBe('John')
+
+    // should do nothing
+    await User.updateOne({ _id: user._id }, {
+      company: { _id: google._id, name: 'Apple', address: {city: 'Cupertino', state: 'California'} }
+    }).exec()
+
+    await User.updateOne({ _id: user._id }, {
+      company: { _id: apple._id, name: 'Apple', address: {city: 'Cupertino', state: 'California'} }
+    }).exec()
+
+    await User.updateOne({ _id: user._id }, {
+      company: google._id
+    }).exec()
+
+    await User.updateOne({ _id: user._id }, {
+      company: apple
+    }).exec()
+
+    const history = await History.find({})
+    expect(history).toHaveLength(6)
+
+    expect(await getCompanyHistorySnapshot(history[0], google)).toMatchInlineSnapshot(`
+{
+  "collectionId": true,
+  "collectionName": "companies",
+  "doc": {
+    "_id": true,
+    "address": {
+      "city": "Mountain View",
+      "state": "California",
+    },
+    "createdAt": true,
+    "name": "Google",
+    "updatedAt": true,
+  },
+  "modelName": "Company",
+  "op": "create",
+  "patch": [],
+  "version": 0,
+}
+`)
+
+    expect(await getCompanyHistorySnapshot(history[1], apple)).toMatchInlineSnapshot(`
+{
+  "collectionId": true,
+  "collectionName": "companies",
+  "doc": {
+    "_id": true,
+    "address": {
+      "city": "Cupertino",
+      "state": "California",
+    },
+    "createdAt": true,
+    "name": "Apple",
+    "updatedAt": true,
+  },
+  "modelName": "Company",
+  "op": "create",
+  "patch": [],
+  "version": 0,
+}
+`)
+
+    expect(await getUserHistorySnapshot(history[2], google, user)).toMatchInlineSnapshot(`
+{
+  "collectionId": true,
+  "collectionName": "users",
+  "doc": {
+    "_id": true,
+    "address": {
+      "city": "Portland",
+      "state": "Maine",
+    },
+    "company": true,
+    "createdAt": true,
+    "name": "John",
+    "role": "user",
+    "sessions": [
+      "192.168.0.1",
+    ],
+    "updatedAt": true,
+  },
+  "modelName": "User",
+  "op": "create",
+  "patch": [],
+  "version": 0,
+}
+`)
+
+    expect(await getUserHistorySnapshot(history[3], google, user)).toMatchInlineSnapshot(`
+{
+  "collectionId": true,
+  "collectionName": "users",
+  "doc": undefined,
+  "modelName": "User",
+  "op": "updateOne",
+  "patch": [
+    {
+      "op": "test",
+      "path": "/company",
+      "value": "65de5dc7da936e48265b0d09",
+    },
+    {
+      "op": "replace",
+      "path": "/company",
+      "value": "65de5dc7da936e48265b0d0d",
+    },
+  ],
+  "version": 1,
+}
+`)
+
+    expect(await getUserHistorySnapshot(history[4], google, user)).toMatchInlineSnapshot(`
+{
+  "collectionId": true,
+  "collectionName": "users",
+  "doc": undefined,
+  "modelName": "User",
+  "op": "updateOne",
+  "patch": [
+    {
+      "op": "test",
+      "path": "/company",
+      "value": "65de5dc7da936e48265b0d0d",
+    },
+    {
+      "op": "replace",
+      "path": "/company",
+      "value": "65de5dc7da936e48265b0d09",
+    },
+  ],
+  "version": 2,
+}
+`)
+
+    expect(await getUserHistorySnapshot(history[5], apple, user)).toMatchInlineSnapshot(`
+{
+  "collectionId": true,
+  "collectionName": "users",
+  "doc": undefined,
+  "modelName": "User",
+  "op": "updateOne",
+  "patch": [
+    {
+      "op": "test",
+      "path": "/company",
+      "value": "65de5dc7da936e48265b0d09",
+    },
+    {
+      "op": "replace",
+      "path": "/company",
+      "value": "65de5dc7da936e48265b0d0d",
+    },
+  ],
+  "version": 3,
+}
+`)
+
+    expect((await Company.findById('65de5dc7da936e48265b0d09'))!.name).toBe('Google')
+  })
 })
