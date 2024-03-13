@@ -61,45 +61,48 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
 
     const model = this.model as Model<T>
     const filter = this.getFilter()
-    const count = await this.model.countDocuments(filter).exec()
+
+    const oldDocs = (await model.find(filter).lean()) as HydratedDocument<T>[]
+    //await cursor.eachAsync(async (doc: HydratedDocument<T>) => {
+    //  const origDoc = doc.toObject(toObjectOptions) as HydratedDocument<T>
+    //  await updatePatch(opts, this._context, assignUpdate(doc, update, commands), origDoc)
+    //})
 
     this._context = {
       op: this.op,
       modelName: opts.modelName ?? this.model.modelName,
       collectionName: opts.collectionName ?? this.model.collection.collectionName,
-      isNew: Boolean(options.upsert) && count === 0,
+      isNew: Boolean(options.upsert) && oldDocs.length === 0,
       ignoreEvent: options['ignoreEvent'] as boolean,
-      ignorePatchHistory: options['ignorePatchHistory'] as boolean
+      ignorePatchHistory: options['ignorePatchHistory'] as boolean,
+      oldDocs
     }
-
-    const updateQuery = this.getUpdate()
-    const { update, commands } = splitUpdateAndCommands(updateQuery)
-
-    const cursor = model.find(filter).cursor()
-    await cursor.eachAsync(async (doc: HydratedDocument<T>) => {
-      const origDoc = doc.toObject(toObjectOptions) as HydratedDocument<T>
-      await updatePatch(opts, this._context, assignUpdate(doc, update, commands), origDoc)
-    })
   })
 
   schema.post(updateMethods as MongooseQueryMiddleware[], async function (this: IHookContext<T>) {
     const options = this.getOptions()
     if (isHookIgnored(options)) return
 
-    if (!this._context.isNew) return
-
     const model = this.model as Model<T>
     const updateQuery = this.getUpdate()
     const { update, commands } = splitUpdateAndCommands(updateQuery)
 
-    const filter = assignUpdate(model.hydrate({}), update, commands)
-    if (!_.isEmpty(filter)) {
-      const current = await model.findOne(update).lean().exec()
-      if (current) {
-        this._context.createdDocs = [current] as HydratedDocument<T>[]
+    if (this._context.isNew) {
 
-        await createPatch(opts, this._context)
+      const filter = assignUpdate(model.hydrate({}), update, commands)
+      if (!_.isEmpty(filter)) {
+        const current = await model.findOne(update).lean().exec()
+        if (current) {
+          this._context.createdDocs = [current] as HydratedDocument<T>[]
+
+          await createPatch(opts, this._context)
+        }
       }
+    } else {
+      await Promise.all(this._context.oldDocs?.map(async (oldDoc) => {
+        const doc = await model.findById(oldDoc._id).lean() as HydratedDocument<T>
+        await updatePatch(opts, this._context, doc, oldDoc)
+      }) ?? [])
     }
   })
 }
