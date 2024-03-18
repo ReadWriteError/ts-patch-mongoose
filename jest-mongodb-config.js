@@ -1,10 +1,11 @@
-export default {
+module.exports = {
   mongodbMemoryServerOptions: {
     binary: {
       skipMD5: true,
     },
     autoStart: false,
     instance: {},
+    replSet: {},
   },
-  useSharedDBForAllJestWorkers: false,
+  useSharedDBForAllJestWorkers: true,
 }

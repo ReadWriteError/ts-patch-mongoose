@@ -13,8 +13,6 @@ jest.mock('../src/em', () => {
 })
 
 describe('plugin - omit all', () => {
-  const uri = `${globalThis.__MONGO_URI__}${globalThis.__MONGO_DB_NAME__}`
-
   UserSchema.plugin(patchHistoryPlugin, {
     omit: ['__v', 'name', 'role', 'createdAt', 'updatedAt'],
   })
@@ -22,7 +20,7 @@ describe('plugin - omit all', () => {
   const User = model('User', UserSchema)
 
   beforeAll(async () => {
-    await mongoose.connect(uri)
+    await mongoose.connect(globalThis.__MONGO_URI__, { dbName: globalThis.__MONGO_DB_NAME__ })
   })
 
   afterAll(async () => {

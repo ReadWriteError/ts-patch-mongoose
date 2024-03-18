@@ -15,8 +15,6 @@ jest.mock('../src/em', () => {
 })
 
 describe('plugin - preDelete test', () => {
-  const uri = `${globalThis.__MONGO_URI__}${globalThis.__MONGO_DB_NAME__}`
-
   UserSchema.plugin(patchHistoryPlugin, {
     eventDeleted: USER_DELETED,
     patchHistoryDisabled: true,
@@ -26,7 +24,7 @@ describe('plugin - preDelete test', () => {
   const User = model('User', UserSchema)
 
   beforeAll(async () => {
-    await mongoose.connect(uri)
+    await mongoose.connect(globalThis.__MONGO_URI__, { dbName: globalThis.__MONGO_DB_NAME__ })
   })
 
   afterAll(async () => {

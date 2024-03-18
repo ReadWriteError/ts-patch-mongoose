@@ -16,8 +16,6 @@ jest.mock('../src/em', () => {
 })
 
 describe('plugin - event updated & patch history disabled', () => {
-  const uri = `${globalThis.__MONGO_URI__}${globalThis.__MONGO_DB_NAME__}`
-
   UserSchema.plugin(patchHistoryPlugin, {
     eventUpdated: USER_UPDATED,
     patchHistoryDisabled: true,
@@ -27,7 +25,7 @@ describe('plugin - event updated & patch history disabled', () => {
   const User = model('User', UserSchema)
 
   beforeAll(async () => {
-    await mongoose.connect(uri)
+    await mongoose.connect(globalThis.__MONGO_URI__, { dbName: globalThis.__MONGO_DB_NAME__ })
   })
 
   afterAll(async () => {
