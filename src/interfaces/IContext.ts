@@ -1,4 +1,4 @@
-import type { HydratedDocument } from 'mongoose'
+import type { ClientSession, HydratedDocument } from 'mongoose'
 
 interface IContext<T> {
   op: string
@@ -9,6 +9,7 @@ interface IContext<T> {
   deletedDocs?: HydratedDocument<T>[]
   ignoreEvent?: boolean
   ignorePatchHistory?: boolean
+  session?: ClientSession | undefined
 }
 
 export default IContext
