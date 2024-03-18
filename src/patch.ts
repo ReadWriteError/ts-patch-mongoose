@@ -67,6 +67,9 @@ export async function getData<T>(opts: IPluginOptions<T>): Promise<[User | undef
 
 export function emitEvent<T>(context: IContext<T>, event: string | undefined, data: IEvent<T>): void {
   if (event && !context.ignoreEvent) {
+    if (context.session)
+      data = { ...data, session: context.session }
+
     em.emit(event, data)
   }
 }
@@ -76,6 +79,7 @@ export async function bulkPatch<T>(opts: IPluginOptions<T>, context: IContext<T>
   const event = opts[eventKey]
   const docs = context[docsKey]
   const key = eventKey === 'eventCreated' ? 'doc' : 'oldDoc'
+  const sessionOption = context.session ? { session: context.session } : undefined
 
   if (_.isEmpty(docs) || (!event && !history)) return
 
@@ -108,7 +112,7 @@ export async function bulkPatch<T>(opts: IPluginOptions<T>, context: IContext<T>
     }
 
     if (history) {
-      await History.bulkWrite(bulk, { ordered: false })
+      await History.bulkWrite(bulk, { ...sessionOption, ordered: false })
     }
   }
 }
@@ -119,6 +123,7 @@ export async function createPatch<T>(opts: IPluginOptions<T>, context: IContext<
 
 export async function updatePatch<T>(opts: IPluginOptions<T>, context: IContext<T>, current: HydratedDocument<T>, original: HydratedDocument<T>): Promise<void> {
   const history = isPatchHistoryEnabled(opts, context)
+  const sessionOption = context.session ? { session: context.session } : undefined
 
   const { currentObject, originalObject } = getObjects(opts, current, original)
   if (_.isEmpty(originalObject) || _.isEmpty(currentObject)) return
@@ -131,7 +136,7 @@ export async function updatePatch<T>(opts: IPluginOptions<T>, context: IContext<
   if (history) {
     let version = 0
 
-    const lastHistory = await History.findOne({ collectionId: original._id as Types.ObjectId }).sort('-version').exec()
+    const lastHistory = await History.findOne({ collectionId: original._id as Types.ObjectId }, undefined, sessionOption).sort('-version').exec()
 
     if (lastHistory && lastHistory.version >= 0) {
       version = lastHistory.version + 1
@@ -139,7 +144,7 @@ export async function updatePatch<T>(opts: IPluginOptions<T>, context: IContext<
 
     const [user, reason, metadata] = await getData(opts)
 
-    await History.create({
+    await History.create([{
       op: context.op,
       modelName: context.modelName,
       collectionName: context.collectionName,
@@ -149,7 +154,7 @@ export async function updatePatch<T>(opts: IPluginOptions<T>, context: IContext<
       reason,
       metadata,
       version,
-    })
+    }], sessionOption)
   }
 }
 

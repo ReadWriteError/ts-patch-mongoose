@@ -24,6 +24,7 @@ export const deleteHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
 
     const model = this.model as Model<T>
     const filter = this.getFilter()
+    const sessionOption = options.session ? { session: options.session } : undefined
 
     this._context = {
       op: this.op,
@@ -31,15 +32,16 @@ export const deleteHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
       collectionName: opts.collectionName ?? this.model.collection.collectionName,
       ignoreEvent: options['ignoreEvent'] as boolean,
       ignorePatchHistory: options['ignorePatchHistory'] as boolean,
+      session: sessionOption?.session,
     }
 
     if (['remove', 'deleteMany'].includes(this._context.op) && !options['single']) {
-      const docs = await model.find(filter).lean().exec()
+      const docs = await model.find(filter, undefined, sessionOption).lean().exec()
       if (!_.isEmpty(docs)) {
         this._context.deletedDocs = docs as HydratedDocument<T>[]
       }
     } else {
-      const doc = await model.findOne(filter).lean().exec()
+      const doc = await model.findOne(filter, undefined, sessionOption).lean().exec()
       if (!_.isEmpty(doc)) {
         this._context.deletedDocs = [doc] as HydratedDocument<T>[]
       }

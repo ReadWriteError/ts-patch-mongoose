@@ -62,6 +62,7 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
     const model = this.model as Model<T>
     const filter = this.getFilter()
     const count = await this.model.countDocuments(filter).exec()
+    const sessionOption = options.session ? { session: options.session } : undefined
 
     this._context = {
       op: this.op,
@@ -70,12 +71,13 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
       isNew: Boolean(options.upsert) && count === 0,
       ignoreEvent: options['ignoreEvent'] as boolean,
       ignorePatchHistory: options['ignorePatchHistory'] as boolean,
+      session: sessionOption?.session,
     }
 
     const updateQuery = this.getUpdate()
     const { update, commands } = splitUpdateAndCommands(updateQuery)
 
-    const cursor = model.find(filter).cursor()
+    const cursor = model.find(filter, undefined, sessionOption).cursor()
     await cursor.eachAsync(async (doc: HydratedDocument<T>) => {
       const origDoc = doc.toObject(toObjectOptions) as HydratedDocument<T>
       await updatePatch(opts, this._context, assignUpdate(doc, update, commands), origDoc)
