@@ -567,4 +567,61 @@ describe('plugin', () => {
       patch: fourth.patch,
     })
   })
+
+  it('should abort history', async () => {
+    const session = await mongoose.startSession()
+
+    let userID
+
+    await session.withTransaction(async () => {
+      const [user] = await User.create([{ name: 'John', role: 'user' }], { session })
+      expect(user.name).toBe('John')
+      expect(user.$session()).toBe(session)
+
+      userID = user._id
+
+      user.name = 'Alice'
+      await user.save({ session })
+
+      await user.updateOne({ name: 'Bob' }, { session }).exec()
+
+      await User.deleteMany({}).session(session).exec()
+
+      expect(await History.find({}).session(session)).toHaveLength(4)
+
+      await session.abortTransaction()
+      await session.endSession()
+    })
+
+    expect(await User.find({})).toHaveLength(0)
+    expect(await History.find({})).toHaveLength(0)
+
+    expect(em.emit).toHaveBeenCalledTimes(4)
+    expect(em.emit).toHaveBeenNthCalledWith(1, USER_CREATED, {
+      doc: expect.objectContaining({ _id: userID, name: 'John', role: 'user' }),
+      session: session,
+    })
+    expect(em.emit).toHaveBeenNthCalledWith(2, USER_UPDATED, {
+      oldDoc: expect.objectContaining({ _id: userID, name: 'John', role: 'user' }),
+      doc: expect.objectContaining({ _id: userID, name: 'Alice', role: 'user' }),
+      patch: [
+        { op: 'test', path: '/name', value: 'John' },
+        { op: 'replace', path: '/name', value: 'Alice' },
+      ],
+      session: session,
+    })
+    expect(em.emit).toHaveBeenNthCalledWith(3, USER_UPDATED, {
+      oldDoc: expect.objectContaining({ _id: userID, name: 'Alice', role: 'user' }),
+      doc: expect.objectContaining({ _id: userID, name: 'Bob', role: 'user' }),
+      patch: [
+        { op: 'test', path: '/name', value: 'Alice' },
+        { op: 'replace', path: '/name', value: 'Bob' },
+      ],
+      session: session,
+    })
+    expect(em.emit).toHaveBeenNthCalledWith(4, USER_DELETED, {
+      oldDoc: expect.objectContaining({ _id: userID, name: 'Bob', role: 'user' }),
+      session: session,
+    })
+  })
 })
