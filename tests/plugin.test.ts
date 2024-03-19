@@ -583,11 +583,13 @@ describe('plugin', () => {
       user.name = 'Alice'
       await user.save({ session })
 
-      await user.updateOne({ name: 'Bob' }, { session }).exec()
+      await user.updateOne({ name: 'Bob' }, { upsert: true, session }).exec()
 
       await User.deleteMany({}).session(session).exec()
 
-      expect(await History.find({}).session(session)).toHaveLength(4)
+      await user.updateOne({ name: 'Jack', role: 'user' }, { upsert: true, session }).exec()
+
+      expect(await History.find({}).session(session)).toHaveLength(5)
 
       await session.abortTransaction()
       await session.endSession()
@@ -596,7 +598,7 @@ describe('plugin', () => {
     expect(await User.find({})).toHaveLength(0)
     expect(await History.find({})).toHaveLength(0)
 
-    expect(em.emit).toHaveBeenCalledTimes(4)
+    expect(em.emit).toHaveBeenCalledTimes(5)
     expect(em.emit).toHaveBeenNthCalledWith(1, USER_CREATED, {
       doc: expect.objectContaining({ _id: userID, name: 'John', role: 'user' }),
       session: session,
@@ -621,6 +623,10 @@ describe('plugin', () => {
     })
     expect(em.emit).toHaveBeenNthCalledWith(4, USER_DELETED, {
       oldDoc: expect.objectContaining({ _id: userID, name: 'Bob', role: 'user' }),
+      session: session,
+    })
+    expect(em.emit).toHaveBeenNthCalledWith(5, USER_CREATED, {
+      doc: expect.objectContaining({ _id: userID, name: 'Jack', role: 'user' }),
       session: session,
     })
   })

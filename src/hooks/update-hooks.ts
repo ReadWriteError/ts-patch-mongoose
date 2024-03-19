@@ -61,14 +61,14 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
 
     const model = this.model as Model<T>
     const filter = this.getFilter()
-    const count = await this.model.countDocuments(filter).exec()
     const sessionOption = options.session ? { session: options.session } : undefined
+    const isFound = Boolean(await this.model.findOne(filter, undefined, sessionOption).exec())
 
     this._context = {
       op: this.op,
       modelName: opts.modelName ?? this.model.modelName,
       collectionName: opts.collectionName ?? this.model.collection.collectionName,
-      isNew: Boolean(options.upsert) && count === 0,
+      isNew: Boolean(options.upsert) && !isFound,
       ignoreEvent: options['ignoreEvent'] as boolean,
       ignorePatchHistory: options['ignorePatchHistory'] as boolean,
       session: sessionOption?.session,
@@ -91,12 +91,13 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
     if (!this._context.isNew) return
 
     const model = this.model as Model<T>
+    const sessionOption = this._context.session ? { session: this._context.session } : undefined
     const updateQuery = this.getUpdate()
     const { update, commands } = splitUpdateAndCommands(updateQuery)
 
     const filter = assignUpdate(model.hydrate({}), update, commands)
     if (!_.isEmpty(filter)) {
-      const current = await model.findOne(update).lean().exec()
+      const current = await model.findOne(update, undefined, sessionOption).lean().exec()
       if (current) {
         this._context.createdDocs = [current] as HydratedDocument<T>[]
 
