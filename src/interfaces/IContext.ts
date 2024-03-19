@@ -7,6 +7,7 @@ interface IContext<T> {
   isNew?: boolean
   createdDocs?: HydratedDocument<T>[]
   deletedDocs?: HydratedDocument<T>[]
+  updatedDocsOld?: HydratedDocument<T>[]
   ignoreEvent?: boolean
   ignorePatchHistory?: boolean
   session?: ClientSession | undefined

@@ -62,47 +62,45 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
     const model = this.model as Model<T>
     const filter = this.getFilter()
     const sessionOption = options.session ? { session: options.session } : undefined
-    const isFound = Boolean(await this.model.findOne(filter, undefined, sessionOption).exec())
+
+    const oldDocs = await model.find(filter, undefined, sessionOption).lean().exec() as HydratedDocument<T>[]
 
     this._context = {
       op: this.op,
       modelName: opts.modelName ?? this.model.modelName,
       collectionName: opts.collectionName ?? this.model.collection.collectionName,
-      isNew: Boolean(options.upsert) && !isFound,
+      isNew: Boolean(options.upsert) && oldDocs.length === 0,
       ignoreEvent: options['ignoreEvent'] as boolean,
       ignorePatchHistory: options['ignorePatchHistory'] as boolean,
+      updatedDocsOld: oldDocs,
       session: sessionOption?.session,
     }
-
-    const updateQuery = this.getUpdate()
-    const { update, commands } = splitUpdateAndCommands(updateQuery)
-
-    const cursor = model.find(filter, undefined, sessionOption).cursor()
-    await cursor.eachAsync(async (doc: HydratedDocument<T>) => {
-      const origDoc = doc.toObject(toObjectOptions) as HydratedDocument<T>
-      await updatePatch(opts, this._context, assignUpdate(doc, update, commands), origDoc)
-    })
   })
 
   schema.post(updateMethods as MongooseQueryMiddleware[], async function (this: IHookContext<T>) {
     const options = this.getOptions()
     if (isHookIgnored(options)) return
 
-    if (!this._context.isNew) return
-
     const model = this.model as Model<T>
     const sessionOption = this._context.session ? { session: this._context.session } : undefined
     const updateQuery = this.getUpdate()
     const { update, commands } = splitUpdateAndCommands(updateQuery)
 
-    const filter = assignUpdate(model.hydrate({}), update, commands)
-    if (!_.isEmpty(filter)) {
-      const current = await model.findOne(update, undefined, sessionOption).lean().exec()
-      if (current) {
-        this._context.createdDocs = [current] as HydratedDocument<T>[]
+    if (this._context.isNew) {
+      const filter = assignUpdate(model.hydrate({}), update, commands)
+      if (!_.isEmpty(filter)) {
+        const current = await model.findOne(update, undefined, sessionOption).lean().exec()
+        if (current) {
+          this._context.createdDocs = [current] as HydratedDocument<T>[]
 
-        await createPatch(opts, this._context)
+          await createPatch(opts, this._context)
+        }
       }
+    } else {
+      await Promise.all(this._context.updatedDocsOld?.map(async (oldDoc) => {
+        const doc = await model.findById(oldDoc._id, undefined, sessionOption).lean().exec() as HydratedDocument<T>
+        await updatePatch(opts, this._context, doc, oldDoc)
+      }) ?? [])
     }
   })
 }
