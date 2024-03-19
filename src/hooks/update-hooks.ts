@@ -97,10 +97,14 @@ export const updateHooksInitialize = <T>(schema: Schema<T>, opts: IPluginOptions
         }
       }
     } else {
-      await Promise.all(this._context.updatedDocsOld?.map(async (oldDoc) => {
-        const doc = await model.findById(oldDoc._id, undefined, sessionOption).lean().exec() as HydratedDocument<T>
-        await updatePatch(opts, this._context, doc, oldDoc)
+      const bothDocs = await Promise.all(this._context.updatedDocsOld?.map(async (oldDoc) => {
+        return [
+          oldDoc,
+          await model.findById(oldDoc._id, undefined, sessionOption).lean().exec(),
+        ]
       }) ?? [])
+      for (const [oldDoc, doc] of bothDocs)
+        await updatePatch(opts, this._context, doc as HydratedDocument<T>, oldDoc as HydratedDocument<T>)
     }
   })
 }
