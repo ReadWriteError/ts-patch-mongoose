@@ -186,9 +186,11 @@ describe('plugin - global', () => {
   it('should save nested schema', async () => {
     const product = await Product.create({ name: 'paper', description: { summary: 'test1' } })
     expect(product.name).toBe('paper')
+    const firstDesId = (await Product.findById(product.id))?.description?._id
 
     product.description = { summary: 'test2' }
     await product.save()
+    const secondDesId = (await Product.findById(product.id))?.description?._id
 
     product.description.summary = 'test3'
     await product.save()
@@ -207,7 +209,7 @@ describe('plugin - global', () => {
 
     expect(first.doc).toHaveProperty('_id', product._id)
     expect(first.doc).toHaveProperty('name', 'paper')
-    expect(first.doc).toHaveProperty('description', { _id: product.description?._id, summary: 'test1' })
+    expect(first.doc).toHaveProperty('description', { _id: firstDesId, summary: 'test1' })
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -222,8 +224,10 @@ describe('plugin - global', () => {
 
     expect(second.doc).toBeUndefined()
 
-    expect(second.patch).toHaveLength(2)
+    expect(second.patch).toHaveLength(4)
     expect(second.patch).toMatchObject([
+      { op: 'test', path: '/description/_id', value: firstDesId.toString() },
+      { op: 'replace', path: '/description/_id', value: secondDesId.toString() },
       { op: 'test', path: '/description/summary', value: 'test1' },
       { op: 'replace', path: '/description/summary', value: 'test2' },
     ])
@@ -246,13 +250,13 @@ describe('plugin - global', () => {
     expect(em.emit).toHaveBeenCalledTimes(3)
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test1' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test2' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: firstDesId, summary: 'test1' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: secondDesId, summary: 'test2' } }),
       patch: second.patch,
     })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test2' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test3' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: secondDesId, summary: 'test2' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: secondDesId, summary: 'test3' } }),
       patch: third.patch,
     })
   })
@@ -260,10 +264,12 @@ describe('plugin - global', () => {
   it('should update nested schema', async () => {
     const product = await Product.create({ name: 'paper', description: { summary: 'test1' } })
     expect(product.name).toBe('paper')
+    const firstDesId = (await Product.findById(product.id))?.description?._id
 
     await product.updateOne({
       description: { summary: 'test2' },
     }).exec()
+    const secondDesId = (await Product.findById(product.id))?.description?._id
 
     await product.updateOne({
       $set: { 'description.summary': 'test3' },
@@ -283,7 +289,7 @@ describe('plugin - global', () => {
 
     expect(first.doc).toHaveProperty('_id', product._id)
     expect(first.doc).toHaveProperty('name', 'paper')
-    expect(first.doc).toHaveProperty('description', { _id: product.description?._id, summary: 'test1' })
+    expect(first.doc).toHaveProperty('description', { _id: firstDesId, summary: 'test1' })
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -298,8 +304,10 @@ describe('plugin - global', () => {
 
     expect(second.doc).toBeUndefined()
 
-    expect(second.patch).toHaveLength(2)
+    expect(second.patch).toHaveLength(4)
     expect(second.patch).toMatchObject([
+      { op: 'test', path: '/description/_id', value: firstDesId.toString() },
+      { op: 'replace', path: '/description/_id', value: secondDesId.toString() },
       { op: 'test', path: '/description/summary', value: 'test1' },
       { op: 'replace', path: '/description/summary', value: 'test2' },
     ])
@@ -322,13 +330,13 @@ describe('plugin - global', () => {
     expect(em.emit).toHaveBeenCalledTimes(3)
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test1' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test2' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: firstDesId, summary: 'test1' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: secondDesId, summary: 'test2' } }),
       patch: second.patch,
     })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test2' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test3' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: secondDesId, summary: 'test2' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: secondDesId, summary: 'test3' } }),
       patch: third.patch,
     })
   })
