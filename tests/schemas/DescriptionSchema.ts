@@ -7,6 +7,6 @@ const DescriptionSchema = new Schema<IDescription>({
     type: String,
     required: true,
   },
-}, { timestamps: false, _id: false })
+}, { timestamps: false })
 
 export default DescriptionSchema

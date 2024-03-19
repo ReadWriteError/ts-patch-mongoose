@@ -1,4 +1,5 @@
 interface IDescription {
+  [x: string]: any
   summary: string
 }
 

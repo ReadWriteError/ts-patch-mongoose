@@ -207,7 +207,7 @@ describe('plugin - global', () => {
 
     expect(first.doc).toHaveProperty('_id', product._id)
     expect(first.doc).toHaveProperty('name', 'paper')
-    expect(first.doc).toHaveProperty('description', { summary: 'test1' })
+    expect(first.doc).toHaveProperty('description', { _id: product.description?._id, summary: 'test1' })
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -246,13 +246,13 @@ describe('plugin - global', () => {
     expect(em.emit).toHaveBeenCalledTimes(3)
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test1' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test2' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test1' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test2' } }),
       patch: second.patch,
     })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test2' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test3' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test2' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description._id, summary: 'test3' } }),
       patch: third.patch,
     })
   })
@@ -283,7 +283,7 @@ describe('plugin - global', () => {
 
     expect(first.doc).toHaveProperty('_id', product._id)
     expect(first.doc).toHaveProperty('name', 'paper')
-    expect(first.doc).toHaveProperty('description', { summary: 'test1' })
+    expect(first.doc).toHaveProperty('description', { _id: product.description?._id, summary: 'test1' })
     expect(first.doc).toHaveProperty('createdAt')
     expect(first.doc).toHaveProperty('updatedAt')
 
@@ -322,13 +322,13 @@ describe('plugin - global', () => {
     expect(em.emit).toHaveBeenCalledTimes(3)
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_CREATED, { doc: first.doc })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test1' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test2' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test1' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test2' } }),
       patch: second.patch,
     })
     expect(em.emit).toHaveBeenCalledWith(GLOBAL_UPDATED, {
-      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test2' } }),
-      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { summary: 'test3' } }),
+      oldDoc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test2' } }),
+      doc: expect.objectContaining({ _id: product._id, name: 'paper', description: { _id: product.description?._id, summary: 'test3' } }),
       patch: third.patch,
     })
   })
