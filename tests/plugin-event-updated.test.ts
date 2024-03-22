@@ -252,7 +252,7 @@ describe('plugin - event updated & patch history disabled', () => {
   it('should findOneAndReplace() and emit one update event', async () => {
     await User.create({ name: 'Bob', role: 'user' })
     const created = await User.create({ name: 'John', role: 'user' })
-    await User.findOneAndReplace({ _id: created._id }, { name: 'John Doe', role: 'manager' })
+    await User.findOneAndReplace({ _id: created._id }, { name: 'John Doe', role: 'manager', __v: 0 })
     const updated = await User.findById(created._id).exec()
     expect(updated).not.toBeNull()
 

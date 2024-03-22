@@ -324,7 +324,7 @@ describe('plugin', () => {
     if (isMongooseLessThan7) {
       await User.update({ role: 'user' }, { $set: { name: 'Bob' } }, { multi: true }).exec()
     } else {
-      await User.findOneAndUpdate({ role: 'user' }, { $set: { name: 'Bob' } }).exec()
+      await User.updateMany({ role: 'user' }, { $set: { name: 'Bob' } }).exec()
     }
 
     const history = await History.find({})
